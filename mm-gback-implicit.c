@@ -145,7 +145,7 @@ int mm_init(void)
 
     /* Create the initial empty heap */
     struct boundary_tag * initial = mem_sbrk(4 * sizeof(struct boundary_tag));
-    if (initial == (void *)-1)
+    if (initial == NULL)
         return -1;
 
     /* We use a slightly different strategy than suggested in the book.
@@ -302,7 +302,7 @@ static struct block *extend_heap(size_t words)
 {
     void *bp = mem_sbrk(words * WSIZE);
 
-    if ((intptr_t) bp == -1)
+    if (bp == NULL)
         return NULL;
 
     /* Initialize free block header/footer and the epilogue header.
