@@ -13,10 +13,10 @@
  * but note that this is a choice (my actual solution chooses
  * to count everything in bytes instead.)
  *
- * You may use this code as a starting point for your implementation
- * if you want.
+ * You should use this code as a starting point for your 
+ * implementation.
  *
- * Adapted for CS3214 Summer 2020 by gback
+ * First adapted for CS3214 Summer 2020 by gback
  */
 #include <stdio.h>
 #include <string.h>
@@ -142,6 +142,7 @@ int mm_init(void)
 {
     assert (offsetof(struct block, payload) == 4);
     assert (sizeof(struct boundary_tag) == 4);
+
     /* Create the initial empty heap */
     struct boundary_tag * initial = mem_sbrk(4 * sizeof(struct boundary_tag));
     if (initial == (void *)-1)
@@ -176,9 +177,12 @@ void *mm_malloc(size_t size)
         return NULL;
 
     /* Adjust block size to include overhead and alignment reqs. */
-    size += 2 * sizeof(struct boundary_tag);    /* account for tags */
+    size_t bsize = align(size + 2 * sizeof(struct boundary_tag));    /* account for tags */
+    if (bsize < size)
+        return NULL;    /* integer overflow */
+    
     /* Adjusted block size in words */
-    size_t awords = max(MIN_BLOCK_SIZE_WORDS, align(size)/WSIZE); /* respect minimum size */
+    size_t awords = max(MIN_BLOCK_SIZE_WORDS, bsize/WSIZE); /* respect minimum size */
 
     /* Search the free list for a fit */
     if ((bp = find_fit(awords)) != NULL) {
@@ -270,9 +274,9 @@ void *mm_realloc(void *ptr, size_t size)
 
     /* Copy the old data. */
     struct block *oldblock = ptr - offsetof(struct block, payload);
-    size_t oldsize = blk_size(oldblock) * WSIZE;
-    if (size < oldsize) oldsize = size;
-    memcpy(newptr, ptr, oldsize);
+    size_t oldpayloadsize = blk_size(oldblock) * WSIZE - 2 * sizeof(struct boundary_tag);
+    if (size < oldpayloadsize) oldpayloadsize = size;
+    memcpy(newptr, ptr, oldpayloadsize);
 
     /* Free the old block. */
     mm_free(ptr);
@@ -349,7 +353,7 @@ team_t team = {
     /* First member's full name */
     "Godmar Back",
     "gback@cs.vt.edu",
-    /* Second member's full name (leave blank if none) */
+    /* Second member's full name (leave as empty strings if none) */
     "",
     "",
 };
