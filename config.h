@@ -54,8 +54,9 @@
  *
  * Updated Summer 2020 for new hardware
  * Changed Spring 2021 to reduce required tuning
+ * Changed Fall 2023 for larger traces
  */
-#define AVG_LIBC_THRUPUT      30000E3
+#define AVG_LIBC_THRUPUT      29000E3
 
  /* 
   * This constant determines the contributions of space utilization

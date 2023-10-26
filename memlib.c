@@ -90,6 +90,7 @@ void *mem_sbrk(int incr)
 	return NULL;
     }
     mem_brk += incr;
+    getpid();           // perform a nullish sys call to add some cost
     return (void *)old_brk;
 }
 
