@@ -38,7 +38,7 @@ struct boundary_tag {
 
 /* FENCE is used for heap prologue/epilogue. */
 const struct boundary_tag FENCE = {
-    .inuse = 1,
+    .inuse = -1,
     .size = 0
 };
 
