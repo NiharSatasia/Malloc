@@ -37,21 +37,22 @@ Notes:
 - Implement realloc after tests pass with explicit list
 
 Current version: explcit list base tests passing by modifying init/coalesce/place/find_fit, left malloc/free alone
+
 Current Score:
 Results for mm malloc:
 trace                  name valid util     ops      secs  Kops
- 0           amptjp-bal.rep  yes   98%   56940  0.002314 24610
- 1             cccp-bal.rep  yes   96%   58480  0.002339 24998
- 2          cp-decl-bal.rep  yes   98%   66480  0.002964 22432
- 3             expr-bal.rep  yes   99%   53800  0.002141 25131
- 4       coalescing-bal.rep  yes   96%  144000  0.003473 41467
- 5           random-bal.rep  yes   93%   48000  0.013016  3688
- 6          random2-bal.rep  yes   93%   48000  0.012971  3701
- 7           binary-bal.rep  yes   54%  120000  0.247604   485
- 8          binary2-bal.rep  yes   47%  240000  0.791422   303
- 9          realloc-bal.rep  yes   27%  144010  0.692439   208
-10         realloc2-bal.rep  yes   30%  144010  0.023058  6245
-Total                              75% 1123720  1.793741   626
+ 0           amptjp-bal.rep  yes   98%   56940  0.002351 24217
+ 1             cccp-bal.rep  yes   96%   58480  0.002426 24108
+ 2          cp-decl-bal.rep  yes   98%   66480  0.002985 22270
+ 3             expr-bal.rep  yes   99%   53800  0.002164 24857
+ 4       coalescing-bal.rep  yes   99%  144000  0.003517 40944
+ 5           random-bal.rep  yes   93%   48000  0.013201  3636
+ 6          random2-bal.rep  yes   93%   48000  0.013130  3656
+ 7           binary-bal.rep  yes   54%  120000  0.247065   486
+ 8          binary2-bal.rep  yes   47%  240000  0.794816   302
+ 9          realloc-bal.rep  yes   23%  144010  0.698432   206
+10         realloc2-bal.rep  yes   30%  144010  0.023083  6239
+Total                              75% 1123720  1.803171   623
 
 Perf index = 45 (util) + 1 (thru) = 46/100
 */
@@ -85,9 +86,9 @@ struct block
 /* Basic constants and macros */
 #define WSIZE sizeof(struct boundary_tag) /* Word and header/footer size (bytes) */
 // Changed to 8 because the block struct has list elem in it
-#define MIN_BLOCK_SIZE_WORDS 8            /* Minimum block size in words */
-// Changed to 6 to increase util%
-#define CHUNKSIZE (1 << 6)               /* Extend heap by this amount (words) */
+#define MIN_BLOCK_SIZE_WORDS 8 /* Minimum block size in words */
+// Changed to 4 to increase util%
+#define CHUNKSIZE (1 << 4) /* Extend heap by this amount (words) */
 
 static inline size_t max(size_t x, size_t y)
 {
@@ -305,7 +306,8 @@ static struct block *coalesce(struct block *bp)
         list_remove(&next_blk(bp)->elem);
         // list_push_back(&free_list, &bp->elem);
         // combine all previous, this, and next block into one
-        mark_block_free(prev_blk(bp), size + blk_size(next_blk(bp)) + blk_size(prev_blk(bp)));
+        mark_block_free(prev_blk(bp),
+                        size + blk_size(next_blk(bp)) + blk_size(prev_blk(bp)));
         bp = prev_blk(bp);
         list_push_back(&free_list, &bp->elem);
     }
