@@ -36,23 +36,23 @@ Notes:
 - Base tests can pass with explicit list through init/malloc/free/coalesce/place
 - Implement realloc after tests pass with explicit list
 
-Current version: explcit list base tests passing by modifying init/coalesce/place/find_fit, left malloc/free alone
+Current version: segregated list base tests passing by modifying init/coalesce/place/find_fit, left malloc/free alone
 
 Current Score:
 Results for mm malloc:
 trace                  name valid util     ops      secs  Kops
- 0           amptjp-bal.rep  yes   98%   56940  0.002351 24217
- 1             cccp-bal.rep  yes   96%   58480  0.002426 24108
- 2          cp-decl-bal.rep  yes   98%   66480  0.002985 22270
- 3             expr-bal.rep  yes   99%   53800  0.002164 24857
- 4       coalescing-bal.rep  yes   99%  144000  0.003517 40944
- 5           random-bal.rep  yes   93%   48000  0.013201  3636
- 6          random2-bal.rep  yes   93%   48000  0.013130  3656
- 7           binary-bal.rep  yes   54%  120000  0.247065   486
- 8          binary2-bal.rep  yes   47%  240000  0.794816   302
- 9          realloc-bal.rep  yes   23%  144010  0.698432   206
-10         realloc2-bal.rep  yes   30%  144010  0.023083  6239
-Total                              75% 1123720  1.803171   623
+ 0           amptjp-bal.rep  yes   97%   56940  0.002552 22315
+ 1             cccp-bal.rep  yes   93%   58480  0.002879 20310
+ 2          cp-decl-bal.rep  yes   98%   66480  0.003185 20876
+ 3             expr-bal.rep  yes   99%   53800  0.002443 22019
+ 4       coalescing-bal.rep  yes   99%  144000  0.004110 35040
+ 5           random-bal.rep  yes   92%   48000  0.003553 13511
+ 6          random2-bal.rep  yes   91%   48000  0.003647 13163
+ 7           binary-bal.rep  yes   54%  120000  0.136198   881
+ 8          binary2-bal.rep  yes   47%  240000  0.804384   298
+ 9          realloc-bal.rep  yes   29%  144010  0.682794   211
+10         realloc2-bal.rep  yes   27%  144010  0.024234  5943
+Total                              75% 1123720  1.669978   673
 
 Perf index = 45 (util) + 1 (thru) = 46/100
 */
@@ -108,7 +108,12 @@ static bool is_aligned(size_t size)
 
 /* Global variables */
 static struct block *heap_listp = 0; /* Pointer to first block */
-static struct list free_list;
+// static struct list free_list;
+#define NUM_FREE_LISTS 16
+static struct list free_lists[NUM_FREE_LISTS];
+
+/* Helper functions*/
+static int get_list_size(size_t size);
 
 /* Function prototypes for internal helper routines */
 static struct block *extend_heap(size_t words);
@@ -186,12 +191,16 @@ int mm_init(void)
     assert(offsetof(struct block, payload) == 4);
     assert(sizeof(struct boundary_tag) == 4);
 
+    //  list_init(&free_list);
+    for (int i = 0; i < NUM_FREE_LISTS; i++)
+    {
+        list_init(&free_lists[i]);
+    }
+
     /* Create the initial empty heap */
     struct boundary_tag *initial = mem_sbrk(4 * sizeof(struct boundary_tag));
     if (initial == NULL)
         return -1;
-
-    list_init(&free_list);
 
     /* We use a slightly different strategy than suggested in the book.
      * Rather than placing a min-sized prologue block at the beginning
@@ -233,6 +242,8 @@ void *mm_malloc(size_t size)
     if ((bp = find_fit(awords)) != NULL)
     {
         place(bp, awords);
+        // Assertion 1 -- Check to ensure the block payload is correctly alligned
+        assert(((uintptr_t)bp->payload & (ALIGNMENT - 1)) == 0);
         return bp->payload;
     }
 
@@ -257,6 +268,9 @@ void mm_free(void *bp)
     /* Find block from user pointer */
     struct block *blk = bp - offsetof(struct block, payload);
 
+    // Assertion 2 -- Check to ensure bp falls within the heap range
+    assert(bp >= mem_heap_lo() && bp < mem_heap_hi());
+
     mark_block_free(blk, blk_size(blk));
     coalesce(blk);
 }
@@ -273,18 +287,18 @@ static struct block *coalesce(struct block *bp)
     if (prev_alloc && next_alloc)
     { /* Case 1 */
         // both are allocated, nothing to coalesce
-        list_push_back(&free_list, &bp->elem);
+        list_push_front(&free_lists[get_list_size(size)], &bp->elem);
         // return bp;
     }
 
     else if (prev_alloc && !next_alloc)
     { /* Case 2 */
-        // combine this block and next block by extending it
         // Remove next block from the free list
         list_remove(&next_blk(bp)->elem);
-        //  list_push_back(&free_list, &bp->elem);
+        //  list_push_front(&free_list, &bp->elem);
+        // combine this block and next block by extending it
         mark_block_free(bp, size + blk_size(next_blk(bp)));
-        list_push_back(&free_list, &bp->elem);
+        list_push_front(&free_lists[get_list_size(size + blk_size(next_blk(bp)))], &bp->elem);
     }
 
     else if (!prev_alloc && next_alloc)
@@ -293,9 +307,9 @@ static struct block *coalesce(struct block *bp)
         bp = prev_blk(bp);
         // Remove previous block from the free list
         list_remove(&bp->elem);
-        // list_push_back(&free_list, &bp->elem);
+        // list_push_front(&free_list, &bp->elem);
         mark_block_free(bp, size + blk_size(bp));
-        list_push_back(&free_list, &bp->elem);
+        list_push_front(&free_lists[get_list_size(size + blk_size(bp))], &bp->elem);
     }
 
     else
@@ -304,12 +318,12 @@ static struct block *coalesce(struct block *bp)
         // remove previous and next
         list_remove(&prev_blk(bp)->elem);
         list_remove(&next_blk(bp)->elem);
-        // list_push_back(&free_list, &bp->elem);
+        // list_push_front(&free_list, &bp->elem);
         // combine all previous, this, and next block into one
         mark_block_free(prev_blk(bp),
                         size + blk_size(next_blk(bp)) + blk_size(prev_blk(bp)));
         bp = prev_blk(bp);
-        list_push_back(&free_list, &bp->elem);
+        list_push_front(&free_lists[get_list_size(size + blk_size(next_blk(bp)) + blk_size(prev_blk(bp)))], &bp->elem);
     }
 
     return bp;
@@ -393,6 +407,12 @@ static void place(struct block *bp, size_t asize)
 {
     size_t csize = blk_size(bp);
 
+    // Assertion 3 -- Check to ensure the block is free
+    assert(blk_free(bp));
+
+    // Assertion 4 -- Check to ensure the block size is greater than or equal to the requested size
+    assert(asize <= csize);
+
     if ((csize - asize) >= MIN_BLOCK_SIZE_WORDS)
     {
         mark_block_used(bp, asize);
@@ -400,7 +420,9 @@ static void place(struct block *bp, size_t asize)
         bp = next_blk(bp);
         mark_block_free(bp, csize - asize);
         //  list_remove(&bp->elem);
-        list_push_back(&free_list, &bp->elem);
+        // Assertion 5 -- Check to ensure the freed block has a valid size
+        assert(blk_size(bp) >= MIN_BLOCK_SIZE_WORDS);
+        list_push_front(&free_lists[get_list_size(csize - asize)], &bp->elem);
     }
     else
     {
@@ -414,22 +436,55 @@ static void place(struct block *bp, size_t asize)
  */
 static struct block *find_fit(size_t asize)
 {
-    /* First fit search */
-    for (struct list_elem *list = list_begin(&free_list); list != list_end(&free_list); list = list_next(list))
+    for (int i = get_list_size(asize); i < NUM_FREE_LISTS; i++)
     {
-        struct block *bp = list_entry(list, struct block, elem);
-
-        if (blk_free(bp) && asize <= blk_size(bp))
+        /* First fit search */
+        for (struct list_elem *list = list_begin(&free_lists[i]); list != list_end(&free_lists[i]); list = list_next(list))
         {
-            return bp;
+            struct block *bp = list_entry(list, struct block, elem);
+            // Assertion 6 -- Check to ensure the block is free
+            assert(blk_free(bp));
+            if (asize <= blk_size(bp))
+            {
+                return bp;
+            }
         }
     }
     return NULL; /* No fit */
 }
 
+/**
+ * get_list_size - Calculates the index for the segregated free list
+ * based on the size of the block
+ *
+ * Determines which free list to use by continously dividing the size
+ * by 2 to categorize it into one of several size classes.
+ *
+ * @param size: block size in words
+ * @return: index of the segregated free list that corresponds best
+ *          compared to block size
+ */
+static int get_list_size(size_t size)
+{
+    // Round to minimum block size if it is lower than that
+    if (size < MIN_BLOCK_SIZE_WORDS)
+    {
+        size = MIN_BLOCK_SIZE_WORDS;
+    }
+
+    int index = 0;
+    while (size > 1 && index < NUM_FREE_LISTS - 1)
+    {
+        // Divide by 2 until right size is found
+        size = size / 2;
+        index++;
+    }
+    return index;
+}
+
 team_t team = {
     /* Team name */
-    "Sample allocator using explicit list",
+    "Sample allocator using segregated list",
     /* First member's full name */
     "Nihar Satasia",
     "niharsatasia@vt.edu",
