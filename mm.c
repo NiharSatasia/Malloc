@@ -376,6 +376,11 @@ void *mm_realloc(void *ptr, size_t size)
     {
         return oldblock->payload;
     }
+    if (prev_alloc && get_footer(next_block)->inuse == -1) {
+        //printf("%s\n", "yes");
+        extend_heap(awords - blk_size(oldblock));
+        next_block = next_blk(oldblock);
+    }
     // Case 1: previous block free + next block allocated and og size is smaller than requested size
     if (!prev_alloc && next_alloc)
     {
@@ -397,8 +402,8 @@ void *mm_realloc(void *ptr, size_t size)
         }
     }
 
-    // Case 2: previous block allocated + next block free and og size is smaller than requested size
-    else if (!next_alloc)
+    // Case 2: previous block allocated + next block free and og size is smaller than requested size - currently doing both unallocated too
+    else if (!next_alloc) 
     {
         if (total_size_next >= awords)
         {
@@ -407,7 +412,7 @@ void *mm_realloc(void *ptr, size_t size)
             list_remove(&next_block->elem);
 
             // Mark as free and used
-            mark_block_free(next_block, total_size_next);
+            mark_block_free(oldblock, total_size_next);
             mark_block_used(oldblock, total_size_next);
 
             // No memmove since we expand
