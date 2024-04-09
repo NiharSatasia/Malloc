@@ -347,6 +347,75 @@ void *mm_realloc(void *ptr, size_t size)
         return mm_malloc(size);
     }
 
+    /* Copy the old data. */
+    struct block *oldblock = ptr - offsetof(struct block, payload);
+    size_t oldpayloadsize = blk_size(oldblock) * WSIZE - 2 * sizeof(struct boundary_tag);
+    if (size < oldpayloadsize)
+        oldpayloadsize = size;
+
+    // From coalesce
+    bool prev_alloc = prev_blk_footer(oldblock)->inuse; /* is previous block allocated? */
+    bool next_alloc = !blk_free(next_blk(oldblock));    /* is next block allocated? */
+
+    // From mm_malloc
+    /* Adjust block size to include overhead and alignment reqs. */
+    size_t bsize = align(size + 2 * sizeof(struct boundary_tag)); /* account for tags */
+    if (bsize < size)
+        return NULL; /* integer overflow */
+    /* Adjusted block size in words */
+    size_t awords = max(MIN_BLOCK_SIZE_WORDS, bsize / WSIZE); /* respect minimum size */
+
+    // Initializing other variables
+    struct block *prev_block = prev_blk(oldblock);
+    struct block *next_block = next_blk(oldblock);
+    size_t total_size_prev = blk_size(prev_block) + blk_size(oldblock);
+    size_t total_size_next = blk_size(next_block) + blk_size(oldblock);
+
+    // Case 0: If the requested size is less than the old block size, do nothing.
+    if (awords <= blk_size(oldblock))
+    {
+        return oldblock->payload;
+    }
+    // Case 1: previous block free + next block allocated and og size is smaller than requested size
+    if (!prev_alloc && next_alloc)
+    {
+        // Check if the combined size is sufficient
+        if (total_size_prev >= awords)
+        {
+            // Remove the previous block from the free list
+            assert(prev_block != NULL);
+            list_remove(&prev_block->elem);
+
+            // Mark as free and used
+            mark_block_free(prev_block, total_size_prev);
+            mark_block_used(prev_block, total_size_prev);
+
+            // Move data to the beginning of the combined block
+            memmove(prev_block->payload, oldblock->payload, oldpayloadsize);
+
+            return prev_block->payload;
+        }
+    }
+
+    // Case 2: previous block allocated + next block free and og size is smaller than requested size
+    else if (!next_alloc)
+    {
+        if (total_size_next >= awords)
+        {
+            // Remove the next block from the free list
+            assert(next_block != NULL);
+            list_remove(&next_block->elem);
+
+            // Mark as free and used
+            mark_block_free(next_block, total_size_next);
+            mark_block_used(oldblock, total_size_next);
+
+            // No memmove since we expand
+
+            return oldblock->payload;
+        }
+    }
+
     void *newptr = mm_malloc(size);
 
     /* If realloc() fails the original block is left untouched  */
@@ -355,11 +424,6 @@ void *mm_realloc(void *ptr, size_t size)
         return 0;
     }
 
-    /* Copy the old data. */
-    struct block *oldblock = ptr - offsetof(struct block, payload);
-    size_t oldpayloadsize = blk_size(oldblock) * WSIZE - 2 * sizeof(struct boundary_tag);
-    if (size < oldpayloadsize)
-        oldpayloadsize = size;
     memcpy(newptr, ptr, oldpayloadsize);
 
     /* Free the old block. */
@@ -438,6 +502,7 @@ static struct block *find_fit(size_t asize)
 {
     for (int i = get_list_size(asize); i < NUM_FREE_LISTS; i++)
     {
+
         /* First fit search */
         for (struct list_elem *list = list_begin(&free_lists[i]); list != list_end(&free_lists[i]); list = list_next(list))
         {
