@@ -18,6 +18,32 @@
  *
  * First adapted for CS3214 Summer 2020 by gback
  */
+
+/*
+ * Header for Memory Allocator Implementation
+ *
+ * Structure of Allocated and Free Blocks:
+ * Each block, whether free or allocated, begins with a `boundary_tag` 
+ * structure that contains two fields:
+ * 1. `inuse`: either 0 or 1
+ * 2. `size`: size of block in words
+ *
+ * Both allocated and free blocks contain the header and payload, but
+ * free blocks make use of the pointers to next and previous via list_elem.
+ *
+ * Organization of the Free List:
+ * The allocator maintains an array of free lists, `free_lists`, to manage
+ * free blocks of various sizes. Each index in the array corresponds to a 
+ * segregated size class, which lets us coalesce based on block sizes. The
+ * array size is defined by `NUM_FREE_LISTS` which we set to be 16.
+ *
+ * Manipulation of the Free List:
+ * In mm_malloc, the allocator searches through the 
+ * segregated free lists starting from the smallest size class via find_fit. 
+ * Blocks that are split during allocation have their remaining free portions 
+ * added to the appropriate free list via place.
+ */
+
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -41,20 +67,20 @@ Current version: segregated list base tests passing by modifying init/coalesce/p
 Current Score:
 Results for mm malloc:
 trace                  name valid util     ops      secs  Kops
- 0           amptjp-bal.rep  yes   97%   56940  0.002552 22315
- 1             cccp-bal.rep  yes   93%   58480  0.002879 20310
- 2          cp-decl-bal.rep  yes   98%   66480  0.003185 20876
- 3             expr-bal.rep  yes   99%   53800  0.002443 22019
- 4       coalescing-bal.rep  yes   99%  144000  0.004110 35040
- 5           random-bal.rep  yes   92%   48000  0.003553 13511
- 6          random2-bal.rep  yes   91%   48000  0.003647 13163
- 7           binary-bal.rep  yes   54%  120000  0.136198   881
- 8          binary2-bal.rep  yes   47%  240000  0.804384   298
- 9          realloc-bal.rep  yes   29%  144010  0.682794   211
-10         realloc2-bal.rep  yes   27%  144010  0.024234  5943
-Total                              75% 1123720  1.669978   673
+ 0           amptjp-bal.rep  yes   97%   56940  0.002471 23043
+ 1             cccp-bal.rep  yes   92%   58480  0.002567 22777
+ 2          cp-decl-bal.rep  yes   98%   66480  0.002922 22748
+ 3             expr-bal.rep  yes   99%   53800  0.002314 23248
+ 4       coalescing-bal.rep  yes   96%  144000  0.004055 35511
+ 5           random-bal.rep  yes   90%   48000  0.003023 15876
+ 6          random2-bal.rep  yes   90%   48000  0.003000 16001
+ 7           binary-bal.rep  yes   54%  120000  0.006322 18981
+ 8          binary2-bal.rep  yes   47%  240000  0.012532 19151
+ 9          realloc-bal.rep  yes   89%  144010  0.003462 41598
+10         realloc2-bal.rep  yes   82%  144010  0.003064 46994
+Total                              85% 1123720  0.045734 24571
 
-Perf index = 45 (util) + 1 (thru) = 46/100
+Perf index = 51 (util) + 34 (thru) = 85/100
 */
 
 struct boundary_tag
@@ -87,7 +113,7 @@ struct block
 #define WSIZE sizeof(struct boundary_tag) /* Word and header/footer size (bytes) */
 // Changed to 8 because the block struct has list elem in it
 #define MIN_BLOCK_SIZE_WORDS 8 /* Minimum block size in words */
-// Changed to 4 to increase util%
+// Changed to 6 to increase util%
 #define CHUNKSIZE (1 << 6) /* Extend heap by this amount (words) */
 
 static inline size_t max(size_t x, size_t y)
