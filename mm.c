@@ -88,7 +88,7 @@ struct block
 // Changed to 8 because the block struct has list elem in it
 #define MIN_BLOCK_SIZE_WORDS 8 /* Minimum block size in words */
 // Changed to 4 to increase util%
-#define CHUNKSIZE (1 << 4) /* Extend heap by this amount (words) */
+#define CHUNKSIZE (1 << 6) /* Extend heap by this amount (words) */
 
 static inline size_t max(size_t x, size_t y)
 {
