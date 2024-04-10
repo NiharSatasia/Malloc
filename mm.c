@@ -505,11 +505,14 @@ static void place(struct block *bp, size_t asize)
  */
 static struct block *find_fit(size_t asize)
 {
+    // Limit to prevent extensive search
+    int search_limit = 5;
     for (int i = get_list_size(asize); i < NUM_FREE_LISTS; i++)
     {
-
+        // Keep track of search depth
+        int depth = 0;
         /* First fit search */
-        for (struct list_elem *list = list_begin(&free_lists[i]); list != list_end(&free_lists[i]); list = list_next(list))
+        for (struct list_elem *list = list_begin(&free_lists[i]); list != list_end(&free_lists[i]) && depth < search_limit; list = list_next(list), depth++)
         {
             struct block *bp = list_entry(list, struct block, elem);
             // Assertion 6 -- Check to ensure the block is free
