@@ -25,7 +25,7 @@
  * Structure of Allocated and Free Blocks:
  * Each block, whether free or allocated, begins with a `boundary_tag` 
  * structure that contains two fields:
- * 1. `inuse`: either 0 or 1
+ * 1. `inuse`: either 0 or 1, or -1 for a fence
  * 2. `size`: size of block in words
  *
  * Both allocated and free blocks contain the header and payload, but
@@ -38,7 +38,7 @@
  * array size is defined by `NUM_FREE_LISTS` which we set to be 16.
  *
  * Manipulation of the Free List:
- * In mm_malloc, the allocator searches through the 
+ * In mm_malloc, first small requests are rounded up to the nearest power of 2, then the allocator searches through the 
  * segregated free lists starting from the smallest size class via find_fit. 
  * Blocks that are split during allocation have their remaining free portions 
  * added to the appropriate free list via place.
@@ -113,8 +113,8 @@ struct block
 #define WSIZE sizeof(struct boundary_tag) /* Word and header/footer size (bytes) */
 // Changed to 8 because the block struct has list elem in it
 #define MIN_BLOCK_SIZE_WORDS 8 /* Minimum block size in words */
-// Changed to 6 to increase util%
-#define CHUNKSIZE (1 << 6) /* Extend heap by this amount (words) */
+// Changed to 8 to increase util%
+#define CHUNKSIZE (1 << 8) /* Extend heap by this amount (words) */
 
 static inline size_t max(size_t x, size_t y)
 {
@@ -255,6 +255,15 @@ void *mm_malloc(size_t size)
     /* Ignore spurious requests */
     if (size == 0)
         return NULL;
+
+    //round small requests to next power of 2
+    if (size < 1024) {
+        size_t counter = 2;
+        while (counter < size) {
+            counter = counter * 2;
+        }
+        size = counter;
+    }
 
     /* Adjust block size to include overhead and alignment reqs. */
     size_t bsize = align(size + 2 * sizeof(struct boundary_tag)); /* account for tags */
@@ -428,7 +437,7 @@ void *mm_realloc(void *ptr, size_t size)
         }
     }
 
-    // Case 2: previous block allocated + next block free and og size is smaller than requested size - currently doing both unallocated too
+    // Case 2 and 3: previous block allocated + next block free and og size is smaller than requested size - currently doing both unallocated too
     else if (!next_alloc) 
     {
         if (total_size_next >= awords)
